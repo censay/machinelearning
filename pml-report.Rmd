@@ -1,0 +1,119 @@
+---
+title: "Practical Machine Learning Report"
+author: "GE"
+date: "October 20, 2015"
+output: html_document
+---
+
+##Executive Summmary
+We use data from accelerometers from many different subjects to build highly predictive machine model.  In the end we get a model with 99.2% accuracy, which is then used to correctly predict 20 ultimate test values after cross validation.  The best model used the Random Forest.
+
+##Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: [http://groupware.les.inf.puc-rio.br/har] [1] (see the section on the Weight Lifting Exercise Dataset). 
+
+##Procedure
+First we download the data for this project.  We will get the [training data] [2] containing 19622 observations of 160 variables.  We will also download the [ultimate test] [3] containing 20 observations of 160 variables of data.  
+
+We will save the ultimate test data until the very end of the model building procedure since it is very small.  We will subdivide the training data into a training and test set. 
+
+**Nomenclature: PML shall refer to the training set csv as a whole (19,622 cases).  Training will refer to a subset of PML used for training, and testing will refer to a subset of PML used for cross validation.  The "ultimate test" will use the model on a very small subset of data.**
+
+Load the data
+```{r, eval=TRUE, echo=TRUE, cache=TRUE}
+# Load the (total) training set.
+# Missing variables take on 3 general forms.  Properly categorize them as NAs.
+pml <- read.csv("pml-training.csv", na.strings=c("#DIV/0!","","NA"))
+```
+
+Load the caret package and divide the PML into training and test sets.  Training will be 60%, testing is 40% of the PML.  Set seed for repoducability.
+```{r, eval=TRUE, echo=TRUE, cache=TRUE}
+# load the caret package for training and partitioning
+library(caret)
+
+set.seed(1337)
+
+# segment the original training set for cross validation
+inTrain <- createDataPartition(y=pml$classe,
+                               p=0.6, list=FALSE)
+training <- pml[inTrain,]
+testing <- pml[-inTrain,]
+```
+
+The data contains zero columns, remove those.  The first 7 columns of data contain information that shouldn't improve the model and can be removed (including user name, and row numbers, and iterative counts).
+
+```{r, eval=TRUE, echo=TRUE, cache=TRUE}
+# remove zero columns
+training <- training[,colSums(is.na(training)) == 0]
+testing <- testing[,colSums(is.na(testing)) == 0]
+
+#remove non-useful measurement data
+training <- training[,-(c(1:7))]
+testing <- testing[,-c((1:7))]
+```
+
+The variable that is being predicted in both the training and testing set is the "classe" variable that can be one of five values (A,B,C,D,E).  
+
+**I expect that a suitable model will have a error rate of less than 1 in 20, since the assignment ultimately expects us correctly predict 20 values in the ultimate test case**. 
+
+Let's run a quadratic determinant analysis, which is a more general version of the linear classifier.  Let's then validate our sample by applying it to our testing data.
+```{r, eval=TRUE, echo=TRUE, cache=TRUE}
+# Train modFit1 with QDA.  Predict on the model, and 
+# cross-validate with the testing data.
+modFit1 <- train(classe ~ .,method="qda",data=training)
+prediction1 <- predict(modFit1,newdata=testing)
+confusionMatrix(prediction1, testing$classe)
+```
+
+This model gives a 89.2% accuracy, which is less than one in ten.  I think we can make a model that does better than this, considering that the submission assignment wants us to get 20/20 predictions correct in the submission stage, which heavily suggests we can do better than 89.2% percent accuracy.
+
+We will use the randomForest package because it runs a lot faster than the caret version, specifying randomForest.  After we run the model we will validate it by running it on the testing set.
+
+```{r, eval=TRUE, echo=TRUE, cache=TRUE}
+# Predict with random forest
+library(randomForest)
+modFit2 <- randomForest(classe ~ ., data=training)
+prediction2 <- predict(modFit2,newdata=testing)
+confusionMatrix(prediction2, testing$classe)
+```
+
+This is a lot better with a 99.2% accuracy rate! That's approximately a 1 in 125 error. 
+
+Let's try our Random Forest (modFit2) on the ultimate test set. And output our predictions:
+
+```{r, eval=TRUE, echo=TRUE, cache=TRUE}
+# try small test set
+pmlultimatetest <- read.csv("pml-testing.csv", na.strings=c("#DIV/0!","","NA"))
+
+# predict for small 20 case set
+predict3 <- predict(modFit2, newdata=pmlultimatetest)
+predict3
+```
+
+##Submission
+Let's write the prediction to a file for submission.
+```{r, eval=TRUE, echo=TRUE, cache=TRUE}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(predict3)
+```
+I submitted these predictions to the second part of the assignment and all 20/20 were correct!
+
+
+##Appendix: Full Printouts of Each Model.  Model 1 (QDA) followed by Model 2 (randomForest)
+```{r, eval=TRUE, echo=TRUE, cache=TRUE}
+# QDA model
+print(modFit1$finalModel)
+# Random Forest Model.  Can't list all the forests but here are the trees, so to speak.
+print(modFit2)
+```
+
+[1]: http://groupware.les.inf.puc-rio.br/har
+[2]: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+[3]: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
